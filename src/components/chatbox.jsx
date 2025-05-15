@@ -12,12 +12,11 @@ const ChatBox = () => {
   
   // Get authentication token from local storage
   const currentToken = localStorage.getItem('access_token');
-  const isAdmin = localStorage.getItem('is_admin') === 'true';
   
   // WebSocket connection ref
   const wsRef = useRef(null);
 
-  // Fetch users list
+  // Fetch users list (only regular users, not admins)
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -26,10 +25,12 @@ const ChatBox = () => {
             'Authorization': `Bearer ${currentToken}`
           }
         });
-        setUsers(response.data);
+        // Filter out admin users if needed (assuming is_admin flag exists)
+        const regularUsers = response.data.filter(user => !user.is_admin);
+        setUsers(regularUsers);
         // Select first user by default if available
-        if (response.data.length > 0) {
-          setSelectedUser(response.data[0]);
+        if (regularUsers.length > 0) {
+          setSelectedUser(regularUsers[0]);
         }
       } catch (err) {
         console.error('Error fetching users:', err);
@@ -42,54 +43,45 @@ const ChatBox = () => {
   }, [currentToken]);
 
   // Initialize WebSocket connection when a user is selected
-  useEffect(() => {
-    if (!selectedUser || !currentToken) return;
+useEffect(() => {
+  if (!selectedUser || !currentToken) return;
 
-    // Close previous connection if exists
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
+  // Close previous connection if exists
+  if (wsRef.current) {
+    wsRef.current.close();
+  }
 
-    setConnectionStatus('connecting');
-
-    // Create new WebSocket connection
-    // Use the admin WebSocket endpoint if the user is an admin
-    const wsEndpoint = isAdmin 
-      ? `ws://localhost:8000/ws/admin?token=${encodeURIComponent(currentToken)}`
-      : `ws://localhost:8000/ws/client?token=${encodeURIComponent(currentToken)}`;
-    
-    const ws = new WebSocket(wsEndpoint);
+  setConnectionStatus('connecting');
+  
+  // Create WebSocket connection with proper error handling
+  try {
+    const ws = new WebSocket(`ws://localhost:8000/ws/admin?token=${encodeURIComponent(currentToken)}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
       console.log('WebSocket connected');
       setConnectionStatus('connected');
-      
-      // Send a ping to keep the connection alive
-      const pingInterval = setInterval(() => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({ type: 'ping' }));
-        }
-      }, 30000); // Every 30 seconds
-      
-      // Store interval ID to clear it on disconnect
-      wsRef.current.pingInterval = pingInterval;
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      console.log('WebSocket message received:', data);
-      
-      if (data.type === 'connection_status') {
-        setConnectionStatus(data.status);
-      } else if (data.type === 'admin_message' || data.type === 'message_to_client') {
-        setMessages(prev => [...prev, {
-          id: data.message_id || `ws-${Date.now()}`,
-          sender: data.admin || 'Support',
-          text: data.content,
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isAdminMessage: true
-        }]);
+      try {
+        const data = JSON.parse(event.data);
+        console.log('WebSocket message:', data);
+        
+        if (data.type === 'connection_status') {
+          setConnectionStatus(data.status);
+        } 
+        else if (data.type === 'admin_message' || data.type === 'message_from_client') {
+          setMessages(prev => [...prev, {
+            id: `msg-${Date.now()}`,
+            sender: data.admin_name || data.sender_name || selectedUser.username,
+            text: data.content,
+            time: new Date(data.timestamp || Date.now()).toLocaleTimeString(),
+            isAdminMessage: data.type === 'admin_message'
+          }]);
+        }
+      } catch (err) {
+        console.error('Error processing message:', err);
       }
     };
 
@@ -98,54 +90,38 @@ const ChatBox = () => {
       setConnectionStatus('error');
     };
 
-    ws.onclose = () => {
-      console.log('WebSocket disconnected');
+    ws.onclose = (event) => {
+      console.log('WebSocket closed:', event.code, event.reason);
       setConnectionStatus('disconnected');
       
-      // Clear the ping interval
-      if (wsRef.current && wsRef.current.pingInterval) {
-        clearInterval(wsRef.current.pingInterval);
+      // Attempt reconnect only if closure was unexpected
+      if (event.code !== 1000 && event.code !== 1008) {
+        setTimeout(() => {
+          if (selectedUser) {
+            console.log('Reconnecting...');
+            // Trigger reconnection by updating a dummy state
+            setConnectionStatus(prev => prev === 'disconnected' ? 'reconnecting' : 'disconnected');
+          }
+        }, 5000);
       }
-      
-      // Attempt to reconnect after a delay
-      setTimeout(() => {
-        if (selectedUser) {
-          console.log('Attempting to reconnect WebSocket...');
-          // The effect will rerun if selectedUser is still set
-        }
-      }, 5000);
     };
 
-    // Fetch message history for the selected user
+    // Fetch message history
     const fetchMessages = async () => {
       try {
         setLoading(true);
-        
-        // Adjust the endpoint based on whether this is an admin-to-client chat
-        // or direct messaging between users
-        let endpoint = '';
-        if (isAdmin) {
-          endpoint = `http://localhost:8000/events/messages/history?client_id=${selectedUser.id}`;
-        } else {
-          endpoint = `http://localhost:8000/events/messages/history`;
-        }
-        
         const response = await axios.get(
-          endpoint,
-          {
-            headers: { 'Authorization': `Bearer ${currentToken}` }
-          }
+          `http://localhost:8000/admin/history?recipient_id=user_${selectedUser.id}`,
+          { headers: { Authorization: `Bearer ${currentToken}` } }
         );
         
-        const formattedMessages = response.data.map(msg => ({
+        setMessages(response.data.map(msg => ({
           id: msg.id,
-          sender: msg.user_id === selectedUser.id ? selectedUser.username : 'Support',
+          sender: msg.sender_name || (msg.admin_id ? 'Admin' : selectedUser.username),
           text: msg.content,
-          time: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          isAdminMessage: msg.user_id !== selectedUser.id
-        }));
-        
-        setMessages(formattedMessages);
+          time: new Date(msg.timestamp).toLocaleTimeString(),
+          isAdminMessage: !!msg.admin_id
+        })));
       } catch (err) {
         console.error('Error fetching messages:', err);
       } finally {
@@ -155,22 +131,24 @@ const ChatBox = () => {
 
     fetchMessages();
 
-    return () => {
-      if (wsRef.current) {
-        if (wsRef.current.pingInterval) {
-          clearInterval(wsRef.current.pingInterval);
-        }
-        wsRef.current.close();
-      }
-    };
-  }, [selectedUser, currentToken, isAdmin]);
+  } catch (err) {
+    console.error('WebSocket initialization error:', err);
+    setConnectionStatus('error');
+  }
+
+  return () => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+  };
+}, [selectedUser, currentToken]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle sending messages
+  // Handle sending messages as admin
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageInput.trim() || !selectedUser) return;
@@ -180,7 +158,7 @@ const ChatBox = () => {
       sender: 'You',
       text: messageInput,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isAdminMessage: false,
+      isAdminMessage: true,
       pending: true
     };
 
@@ -189,23 +167,17 @@ const ChatBox = () => {
 
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        if (isAdmin) {
-          wsRef.current.send(JSON.stringify({
-            type: 'message_to_client',
-            client_id: selectedUser.id,
-            content: messageInput
-          }));
-        } else {
-          wsRef.current.send(JSON.stringify({
-            type: 'message_from_client',
-            content: messageInput
-          }));
-        }
+        wsRef.current.send(JSON.stringify({
+          type: 'message_to_client',
+          recipient_id: `user_${selectedUser.id}`,
+          content: messageInput
+        }));
       } else {
+        // Fallback to HTTP if WebSocket is not available
         await axios.post(
-          'http://localhost:8000/events/messages/send',
+          'http://localhost:8000/admin/send',
           {
-            client_id: selectedUser.id,
+            recipient_id: `user_${selectedUser.id}`,
             content: messageInput
           },
           {
@@ -281,14 +253,14 @@ const ChatBox = () => {
             messages.map((message) => (
               <div 
                 key={message.id} 
-                className={`flex ${message.isAdminMessage ? 'justify-start' : 'justify-end'}`}
+                className={`flex ${message.isAdminMessage ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`max-w-xs px-4 py-2 rounded-lg ${
                   message.isAdminMessage 
-                    ? 'bg-gray-100' 
+                    ? 'bg-blue-100' 
                     : message.failed 
                       ? 'bg-red-100' 
-                      : 'bg-blue-100'
+                      : 'bg-gray-100'
                 }`}>
                   <div className="font-medium text-sm">{message.sender}</div>
                   <div>{message.text}</div>
@@ -323,12 +295,12 @@ const ChatBox = () => {
               onChange={(e) => setMessageInput(e.target.value)}
               className="flex-1 px-3 py-2 border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Type your message..."
-              disabled={connectionStatus !== 'connected'}
+              // disabled={connectionStatus !== 'connected'}
             />
             <button
               type="submit"
               className="px-4 py-2 bg-blue-500 text-white rounded-r-md hover:bg-blue-600 transition disabled:bg-gray-400"
-              disabled={connectionStatus !== 'connected'}
+              // disabled={connectionStatus !== 'connected'}
             >
               Send
             </button>
