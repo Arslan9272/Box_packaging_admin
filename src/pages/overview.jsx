@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import DashboardCard from '../components/dashboardCard'; // Path changed
 import ContactTable from '../components/contactTable'; // Path changed
-import ChatBox from '../components/chatBox'; // Path changed
 
 const Overview = () => {
   const [showChat, setShowChat] = useState(false);
@@ -21,10 +20,10 @@ const Overview = () => {
         <ContactTable /> 
       </div>
 
-      <div className="mb-8">
+      {/* <div className="mb-8">
         <h2 className="text-xl font-semibold text-gray-700 mb-4">Chat Support</h2>
         <ChatBox />
-      </div>
+      </div> */}
     </div>
   );
 };

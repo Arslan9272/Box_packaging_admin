@@ -1,4 +1,3 @@
-// This will be a placeholder for the DashboardCard component
 import React from 'react';
 
 const DashboardCard = ({ title, value, color, icon }) => {

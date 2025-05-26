@@ -5,6 +5,7 @@ import Overview from './pages/Overview';
 import Products from './pages/Products';
 import Settings from './pages/Settings';
 import Login from './pages/login';
+import Chat from './pages/chat';
 
 // For debugging purposes
 console.log("Layout component:", Layout);
@@ -37,6 +38,12 @@ function App() {
         <Route path="/settings" element={
           <Layout>
             <Settings />
+          </Layout>
+        } />
+
+          <Route path="/chat" element={
+          <Layout>
+            <Chat />
           </Layout>
         } />
         

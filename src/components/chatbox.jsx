@@ -10,13 +10,10 @@ const ChatBox = () => {
   const [connectionStatus, setConnectionStatus] = useState('disconnected');
   const messageEndRef = useRef(null);
   
-  // Get authentication token from local storage
   const currentToken = localStorage.getItem('access_token');
   
-  // WebSocket connection ref
   const wsRef = useRef(null);
 
-  // Fetch users list (only regular users, not admins)
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -43,105 +40,112 @@ const ChatBox = () => {
   }, [currentToken]);
 
   // Initialize WebSocket connection when a user is selected
-useEffect(() => {
-  if (!selectedUser || !currentToken) return;
+  useEffect(() => {
+    if (!selectedUser || !currentToken) return;
 
-  // Close previous connection if exists
-  if (wsRef.current) {
-    wsRef.current.close();
-  }
-
-  setConnectionStatus('connecting');
-  
-  // Create WebSocket connection with proper error handling
-  try {
-    const ws = new WebSocket(`ws://localhost:8000/ws/admin?token=${encodeURIComponent(currentToken)}`);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-      setConnectionStatus('connected');
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('WebSocket message:', data);
-        
-        if (data.type === 'connection_status') {
-          setConnectionStatus(data.status);
-        } 
-        else if (data.type === 'admin_message' || data.type === 'message_from_client') {
-          setMessages(prev => [...prev, {
-            id: `msg-${Date.now()}`,
-            sender: data.admin_name || data.sender_name || selectedUser.username,
-            text: data.content,
-            time: new Date(data.timestamp || Date.now()).toLocaleTimeString(),
-            isAdminMessage: data.type === 'admin_message'
-          }]);
-        }
-      } catch (err) {
-        console.error('Error processing message:', err);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setConnectionStatus('error');
-    };
-
-    ws.onclose = (event) => {
-      console.log('WebSocket closed:', event.code, event.reason);
-      setConnectionStatus('disconnected');
-      
-      // Attempt reconnect only if closure was unexpected
-      if (event.code !== 1000 && event.code !== 1008) {
-        setTimeout(() => {
-          if (selectedUser) {
-            console.log('Reconnecting...');
-            // Trigger reconnection by updating a dummy state
-            setConnectionStatus(prev => prev === 'disconnected' ? 'reconnecting' : 'disconnected');
-          }
-        }, 5000);
-      }
-    };
-
-    // Fetch message history
-    const fetchMessages = async () => {
-      try {
-        setLoading(true);
-        const response = await axios.get(
-          `http://localhost:8000/admin/history?recipient_id=user_${selectedUser.id}`,
-          { headers: { Authorization: `Bearer ${currentToken}` } }
-        );
-        
-        setMessages(response.data.map(msg => ({
-          id: msg.id,
-          sender: msg.sender_name || (msg.admin_id ? 'Admin' : selectedUser.username),
-          text: msg.content,
-          time: new Date(msg.timestamp).toLocaleTimeString(),
-          isAdminMessage: !!msg.admin_id
-        })));
-      } catch (err) {
-        console.error('Error fetching messages:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchMessages();
-
-  } catch (err) {
-    console.error('WebSocket initialization error:', err);
-    setConnectionStatus('error');
-  }
-
-  return () => {
+    // Close previous connection if exists
     if (wsRef.current) {
       wsRef.current.close();
     }
-  };
-}, [selectedUser, currentToken]);
+
+    setConnectionStatus('connecting');
+    
+    // Create WebSocket connection with proper error handling
+    try {
+      const ws = new WebSocket(`ws://localhost:8000/ws/admin?token=${encodeURIComponent(currentToken)}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setConnectionStatus('connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('WebSocket message received:', data);
+          
+          if (data.type === 'connection_status') {
+            setConnectionStatus(data.status);
+          } 
+          else if (data.type === 'chat_message') {
+            // Handle incoming messages from users
+            setMessages(prev => [...prev, {
+              id: `msg-${data.message_id || Date.now()}`,
+              sender: data.sender_name || data.sender_id || 'User',
+              text: data.content,
+              time: new Date(data.timestamp || Date.now()).toLocaleTimeString(),
+              isAdminMessage: data.is_admin || false
+            }]);
+          }
+          else if (data.type === 'message_sent') {
+            // Confirmation that our message was sent
+            console.log('Message sent confirmation:', data);
+          }
+          else if (data.type === 'error') {
+            console.error('WebSocket error:', data.message);
+          }
+        } catch (err) {
+          console.error('Error processing message:', err);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setConnectionStatus('error');
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket closed:', event.code, event.reason);
+        setConnectionStatus('disconnected');
+        
+        // Attempt reconnect only if closure was unexpected
+        if (event.code !== 1000 && event.code !== 1008) {
+          setTimeout(() => {
+            if (selectedUser) {
+              console.log('Reconnecting...');
+              setConnectionStatus('reconnecting');
+            }
+          }, 5000);
+        }
+      };
+
+      // Fetch message history
+      const fetchMessages = async () => {
+        try {
+          setLoading(true);
+          const response = await axios.get(
+            `http://localhost:8000/admin/history?recipient_id=user_${selectedUser.id}`,
+            { headers: { Authorization: `Bearer ${currentToken}` } }
+          );
+          
+          setMessages(response.data.map(msg => ({
+            id: msg.id,
+            sender: msg.sender_name || (msg.admin_id ? 'Admin' : selectedUser.username),
+            text: msg.content,
+            time: new Date(msg.timestamp).toLocaleTimeString(),
+            isAdminMessage: !!msg.admin_id
+          })));
+        } catch (err) {
+          console.error('Error fetching messages:', err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchMessages();
+
+    } catch (err) {
+      console.error('WebSocket initialization error:', err);
+      setConnectionStatus('error');
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [selectedUser, currentToken]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -155,7 +159,7 @@ useEffect(() => {
 
     const newMessage = {
       id: `temp-${Date.now()}`,
-      sender: 'You',
+      sender: 'You (Admin)',
       text: messageInput,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isAdminMessage: true,
@@ -163,33 +167,40 @@ useEffect(() => {
     };
 
     setMessages(prev => [...prev, newMessage]);
+    const messageContent = messageInput;
     setMessageInput('');
 
     try {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        // Send via WebSocket with correct message format
         wsRef.current.send(JSON.stringify({
-          type: 'message_to_client',
+          type: 'chat_message',
           recipient_id: `user_${selectedUser.id}`,
-          content: messageInput
+          content: messageContent
         }));
+        
+        // Update message status to sent
+        setMessages(prev => prev.map(msg => 
+          msg.id === newMessage.id ? { ...msg, pending: false } : msg
+        ));
       } else {
         // Fallback to HTTP if WebSocket is not available
         await axios.post(
           'http://localhost:8000/admin/send',
           {
             recipient_id: `user_${selectedUser.id}`,
-            content: messageInput
+            content: messageContent
           },
           {
             headers: { 'Authorization': `Bearer ${currentToken}` }
           }
         );
+        
+        // Update message status
+        setMessages(prev => prev.map(msg => 
+          msg.id === newMessage.id ? { ...msg, pending: false } : msg
+        ));
       }
-
-      // Update message status
-      setMessages(prev => prev.map(msg => 
-        msg.id === newMessage.id ? { ...msg, pending: false } : msg
-      ));
     } catch (err) {
       console.error('Error sending message:', err);
       setMessages(prev => prev.map(msg => 
@@ -241,6 +252,9 @@ useEffect(() => {
           <h3 className="font-semibold">
             {selectedUser ? `Chat with ${selectedUser.username}` : 'Select a user to chat'}
           </h3>
+          <div className="text-sm">
+            Status: {connectionStatus}
+          </div>
         </div>
 
         {/* Messages area */}
@@ -257,17 +271,19 @@ useEffect(() => {
               >
                 <div className={`max-w-xs px-4 py-2 rounded-lg ${
                   message.isAdminMessage 
-                    ? 'bg-blue-100' 
+                    ? 'bg-blue-500 text-white' 
                     : message.failed 
                       ? 'bg-red-100' 
-                      : 'bg-gray-100'
+                      : 'bg-gray-200'
                 }`}>
                   <div className="font-medium text-sm">{message.sender}</div>
                   <div>{message.text}</div>
                   <div className="flex justify-between mt-1">
-                    <span className="text-xs text-gray-500">{message.time}</span>
+                    <span className={`text-xs ${message.isAdminMessage ? 'text-blue-100' : 'text-gray-500'}`}>
+                      {message.time}
+                    </span>
                     {message.pending && (
-                      <span className="text-xs text-gray-500">Sending...</span>
+                      <span className="text-xs text-yellow-500">Sending...</span>
                     )}
                     {message.failed && (
                       <span className="text-xs text-red-500">Failed</span>
@@ -295,12 +311,10 @@ useEffect(() => {
               onChange={(e) => setMessageInput(e.target.value)}
               className="flex-1 px-3 py-2 border rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               placeholder="Type your message..."
-              // disabled={connectionStatus !== 'connected'}
             />
             <button
               type="submit"
               className="px-4 py-2 bg-blue-500 text-white rounded-r-md hover:bg-blue-600 transition disabled:bg-gray-400"
-              // disabled={connectionStatus !== 'connected'}
             >
               Send
             </button>
