@@ -1,9 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Layout from './components/layout/Layout';
-import Overview from './pages/Overview';
-import Products from './pages/Products';
-import Settings from './pages/Settings';
+import Layout from './components/layout/layout';
+import Overview from './pages/overview';
+import Products from './pages/products';
+import Settings from './pages/settings';
 import Login from './pages/login';
 import Chat from './pages/chat';
 
