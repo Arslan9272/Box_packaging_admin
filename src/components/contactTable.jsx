@@ -143,7 +143,10 @@ const ContactTable = () => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Color</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Size (inch)</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Length</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Width</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Depth</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Unit</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Messages</th>
             </tr>
@@ -158,11 +161,12 @@ const ContactTable = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.product_name}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.color}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.quantity}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {order.size_length} x {order.size_width} x {order.size_depth}
-                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.size_length}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.size_width}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.size_depth}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.size_unit}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.order_status}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.messages}</td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{order.message}</td>
               </tr>
             ))}
           </tbody>
